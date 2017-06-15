@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+
+<head>
+<meta charset="utf-8">
+<title>Personal Data Tracker</title>
+<link href="style.css" rel="stylesheet" type="text/css">
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<link href='http://fonts.googleapis.com/css?family=Lustria|Lato:300,400' rel='stylesheet' type='text/css'>
+
+</head>
+
+
+
+
+
+<body>
+  <center> 
+      <h1>Tracking 24 Hours</h1>
+    
+<div id='dashboard'>
+</div>
+    </center> 
+   
+
+<script> 
+    
+function dashboard(id, fData){
+    var barColor = '#00abbd';
+    function segColor(c){ return {Class:"#cc0033", Eating:"#cc3300", Exercise:"#ff9900", Homework:"#ffcc33", Music:"#99cc33", Personal:"#339966", Print:"#006666", Screen:"#006699", Sleeping:"#333399", Social:"#330066", Traveling:"#660066", Work:"#cc3366"}[c]; }
+    
+    // compute total for each state.
+    fData.forEach(function(d){d.total=d.freq.Class+d.freq.Eating+d.freq.Exercise+d.freq.Homework+d.freq.Music+d.freq.Personal+d.freq.Print+d.freq.Screen+d.freq.Sleeping+d.freq.Social+d.freq.Traveling+d.freq.Work;});
+    
+    // function to handle histogram.
+    function histoGram(fD){
+        var hG={},    hGDim = {t: 30, r: 0, b: 30, l: 0};
+        hGDim.w = 900 - hGDim.l - hGDim.r, 
+        hGDim.h = 300 - hGDim.t - hGDim.b;
+            
+        //create svg for histogram.
+        var hGsvg = d3.select(id).append("svg")
+            .attr("width", hGDim.w + hGDim.l + hGDim.r)
+            .attr("height", hGDim.h + hGDim.t + hGDim.b).append("g")
+            .attr("transform", "translate(" + hGDim.l + "," + hGDim.t + ")");
+
+        // create function for x-axis mapping.
+        var x = d3.scale.ordinal().rangeRoundBands([0, hGDim.w], 0.1)
+                .domain(fD.map(function(d) { return d[0]; }));
+
+        // Add x-axis to the histogram svg.
+        hGsvg.append("g").attr("class", "x axis")
+            //.attr("transform", "translate(0," + hGDim.h + ")")
+            .attr("transform", "translate(0," + hGDim.h + ")")
+            .call(d3.svg.axis().scale(x).orient("bottom"));
+
+        // Create function for y-axis map.
+        var y = d3.scale.linear().range([hGDim.h, 0])
+                .domain([0, d3.max(fD, function(d) { return d[1]; })]);
+
+        // Create bars for histogram to contain rectangles and freq labels.
+        var bars = hGsvg.selectAll(".bar").data(fD).enter()
+                .append("g").attr("class", "bar");
+        
+        //create the rectangles.
+        bars.append("rect")
+            .attr("x", function(d) { return x(d[0]); })
+            .attr("y", function(d) { return y(d[1]); })
+            .attr("width", x.rangeBand())
+            .attr("height", function(d) { return hGDim.h - y(d[1]); })
+            .attr('fill',barColor)
+            .on("mouseover",mouseover)// mouseover is defined below.
+            .on("mouseout",mouseout);// mouseout is defined below.
+            
+        //Create the frequency labels above the rectangles.
+        bars.append("text").text(function(d){ return d3.format(",")(d[1])})
+            .attr("x", function(d) { return x(d[0])+x.rangeBand()/2; })
+            .attr("y", function(d) { return y(d[1])-5; })
+            .attr("text-anchor", "middle");
+        
+        
+        
+        
+
+        
+        function mouseover(d){  // utility function to be called on mouseover.
+            // filter for selected state.
+            var st = fData.filter(function(s){ return s.State == d[0];})[0],
+                nD = d3.keys(st.freq).map(function(s){ return {type:s, freq:st.freq[s]};});
+               
+            // call update functions of pie-chart and legend.    
+            pC.update(nD);
+            leg.update(nD);
+        }
+        
+        function mouseout(d){    // utility function to be called on mouseout.
+            // reset the pie-chart and legend.    
+            pC.update(tF);
+            leg.update(tF);
+        }
+        
+        // create function to update the bars. This will be used by pie-chart.
+        hG.update = function(nD, color){
+            // update the domain of the y-axis map to reflect change in frequencies.
+            y.domain([0, d3.max(nD, function(d) { return d[1]; })]);
+            
+            // Attach the new data to the bars.
+            var bars = hGsvg.selectAll(".bar").data(nD);
+            
+            // transition the height and color of rectangles.
+            bars.select("rect").transition().duration(500)
+                .attr("y", function(d) {return y(d[1]); })
+                .attr("height", function(d) { return hGDim.h - y(d[1]); })
+                .attr("fill", color);
+
+            // transition the frequency labels location and change value.
+            bars.select("text").transition().duration(500)
+                .text(function(d){ return d3.format(",")(d[1])})
+                .attr("y", function(d) {return y(d[1])-5; });            
+        }        
+        return hG;
+    }
+    
+    // function to handle pieChart.
+    function pieChart(pD){
+        var pC ={},    pieDim ={w:350, h: 350};
+        pieDim.r = Math.min(pieDim.w, pieDim.h) / 2;
+                
+        // create svg for pie chart.
+        var piesvg = d3.select(id).append("svg")
+            .attr("width", pieDim.w).attr("height", pieDim.h).append("g")
+            .attr("transform", "translate("+pieDim.w/2+","+pieDim.h/2+")");
+        
+        // create function to draw the arcs of the pie slices.
+        var arc = d3.svg.arc().outerRadius(pieDim.r - 10).innerRadius(0);
+
+        // create a function to compute the pie slice angles.
+        var pie = d3.layout.pie().sort(null).value(function(d) { return d.freq; });
+
+        // Draw the pie slices.
+        piesvg.selectAll("path").data(pie(pD)).enter().append("path").attr("d", arc)
+            .each(function(d) { this._current = d; })
+            .style("fill", function(d) { return segColor(d.data.type); })
+            .on("mouseover",mouseover).on("mouseout",mouseout);
+
+        // create function to update pie-chart. This will be used by histogram.
+        pC.update = function(nD){
+            piesvg.selectAll("path").data(pie(nD)).transition().duration(500)
+                .attrTween("d", arcTween);
+        }        
+        // Utility function to be called on mouseover a pie slice.
+        function mouseover(d){
+            // call the update function of histogram with new data.
+            hG.update(fData.map(function(v){ 
+                return [v.State,v.freq[d.data.type]];}),segColor(d.data.type));
+        }
+        //Utility function to be called on mouseout a pie slice.
+        function mouseout(d){
+            // call the update function of histogram with all data.
+            hG.update(fData.map(function(v){
+                return [v.State,v.total];}), barColor);
+        }
+        // Animating the pie-slice requiring a custom function which specifies
+        // how the intermediate paths should be drawn.
+        function arcTween(a) {
+            var i = d3.interpolate(this._current, a);
+            this._current = i(0);
+            return function(t) { return arc(i(t));    };
+        }    
+        return pC;
+    }
+    
+    // function to handle legend.
+    function legend(lD){
+        var leg = {};
+            
+        // create table for legend.
+        var legend = d3.select(id).append("table").attr('class','legend');
+        
+        // create one row per segment.
+        var tr = legend.append("tbody").selectAll("tr").data(lD).enter().append("tr");
+            
+        // create the first column for each segment.
+        tr.append("td").append("svg").attr("width", '16').attr("height", '16').append("rect")
+            .attr("width", '16').attr("height", '16')
+			.attr("fill",function(d){ return segColor(d.type); });
+            
+        // create the second column for each segment.
+        tr.append("td").text(function(d){ return d.type;});
+
+        // create the third column for each segment.
+        tr.append("td").attr("class",'legendFreq')
+            .text(function(d){ return d3.format(",")(d.freq);});
+
+        // create the fourth column for each segment.
+        tr.append("td").attr("class",'legendPerc')
+            .text(function(d){ return getLegend(d,lD);});
+
+        // Utility function to be used to update the legend.
+        leg.update = function(nD){
+            // update the data attached to the row elements.
+            var l = legend.select("tbody").selectAll("tr").data(nD);
+
+            // update the frequencies.
+            l.select(".legendFreq").text(function(d){ return d3.format(",")(d.freq);});
+
+            // update the percentage column.
+            l.select(".legendPerc").text(function(d){ return getLegend(d,nD);});        
+        }
+        
+        function getLegend(d,aD){ // Utility function to compute percentage.
+            return d3.format("%")(d.freq/d3.sum(aD.map(function(v){ return v.freq; })));
+        }
+
+        return leg;
+    }
+    
+    // calculate total frequency by segment for all state.
+    var tF = ['Class', 'Eating', 'Exercise', 'Homework', 'Music', 'Personal', 'Print', 'Screen', 'Sleeping', 'Social', 'Traveling', 'Work'].map(function(d){ 
+        return {type:d, freq: d3.sum(fData.map(function(t){ return t.freq[d];}))}; 
+    });    
+    
+    // calculate total frequency by state for all segment.
+    var sF = fData.map(function(d){return [d.State,d.total];});
+
+    var hG = histoGram(sF), // create the histogram.
+        pC = pieChart(tF), // create the pie-chart.
+        leg= legend(tF);  // create the legend.
+}
+</script>
+
+<script>
+var freqData=[
+{State:'Cabrera',freq:{Class:270, Eating:50, Exercise:65, Homework:80, Music:180, Personal:200, Print:20, Screen:350, Sleeping:500, Social:50, Traveling:30, Work:0}}
+,{State:'Carey',freq:{Class:240, Eating:100, Exercise:30, Homework:110, Music:150, Personal:165, Print:0, Screen:130, Sleeping:450, Social:310, Traveling:75, Work:0}}
+,{State:'Choo',freq:{Class:300, Eating:70, Exercise:180, Homework:90, Music:180, Personal:180, Print:120, Screen:100, Sleeping:420, Social:60, Traveling:60, Work:0}}
+,{State:'Cox',freq:{Class:110, Eating:120, Exercise:100, Homework:30, Music:150, Personal:240, Print:60, Screen:475, Sleeping:435, Social:300, Traveling:60, Work:360}}
+,{State:'Fink',freq:{Class:100, Eating:55, Exercise:0, Homework:20, Music:185, Personal:60, Print:5, Screen:425, Sleeping:515, Social:150, Traveling:40, Work:85}}
+,{State:'Fitch',freq:{Class:180, Eating:27, Exercise:167, Homework:34, Music:570, Personal:13, Print:13, Screen:840, Sleeping:380, Social:960, Traveling:116, Work:540}}
+,{State:'Friske',freq:{Class:100, Eating:55, Exercise:83, Homework:55, Music:706, Personal:35, Print:5, Screen:356, Sleeping:570, Social:315, Traveling:83, Work:239}}
+,{State:'Garcia',freq:{Class:240, Eating:45, Exercise:75, Homework:50, Music:650, Personal:60, Print:60, Screen:200, Sleeping:410, Social:210, Traveling:0, Work:240}}
+,{State:'Hancock',freq:{Class:223, Eating:46, Exercise:94, Homework:60, Music:127, Personal:343, Print:150, Screen:360, Sleeping:380, Social:404, Traveling:123, Work:0}}
+,{State:'Hebert',freq:{Class:435, Eating:85, Exercise:90, Homework:30, Music:150, Personal:350, Print:120, Screen:525, Sleeping:435, Social:260, Traveling:90, Work:0}}
+,{State:'Jameson',freq:{Class:105, Eating:27, Exercise:87, Homework:43, Music:105, Personal:35, Print:0, Screen:722, Sleeping:580, Social:426, Traveling:40, Work:0}}
+,{State:'Lloyd',freq:{Class:170, Eating:70, Exercise:30, Homework:185, Music:320, Personal:115, Print:30, Screen:500, Sleeping:490, Social:110, Traveling:80, Work:0}}
+,{State:'Luce',freq:{Class:255, Eating:35, Exercise:30, Homework:65, Music:250, Personal:115, Print:65, Screen:690, Sleeping:420, Social:110, Traveling:50, Work:120}}
+,{State:'Magno',freq:{Class:295, Eating:60, Exercise:90, Homework:120, Music:330, Personal:390, Print:60, Screen:655, Sleeping:420, Social:240, Traveling:140, Work:0}}
+,{State:'Moura',freq:{Class:290, Eating:55, Exercise:90, Homework:30, Music:50, Personal:90, Print:50, Screen:320, Sleeping:510, Social:90, Traveling:0, Work:0}}
+,{State:'Moon',freq:{Class:240, Eating:90, Exercise:0, Homework:60, Music:0, Personal:200, Print:120, Screen:30, Sleeping:420, Social:480, Traveling:0, Work:0}}
+,{State:'Oakes',freq:{Class:0, Eating:34, Exercise:92, Homework:25, Music:510, Personal:45, Print:3, Screen:95, Sleeping:470, Social:390, Traveling:16, Work:540}}
+,{State:'Pereira',freq:{Class:270, Eating:110, Exercise:180, Homework:150, Music:500, Personal:90, Print:60, Screen:720, Sleeping:360, Social:120, Traveling:40, Work:180}}
+,{State:'Ruiz',freq:{Class:300, Eating:95, Exercise:0, Homework:262, Music:720, Personal:308, Print:5, Screen:575, Sleeping:520, Social:55, Traveling:85, Work:15}}
+,{State:'Sales',freq:{Class:220, Eating:180, Exercise:120, Homework:90, Music:210, Personal:90, Print:30, Screen:450, Sleeping:408, Social:120, Traveling:40, Work:0}}
+,{State:'Silva',freq:{Class:225, Eating:105, Exercise:75, Homework:120, Music:75, Personal:336, Print:30, Screen:330, Sleeping:595, Social:456, Traveling:75, Work:0}}
+,{State:'Van Daele',freq:{Class:135, Eating:50, Exercise:60, Homework:60, Music:15, Personal:100, Print:0, Screen:300, Sleeping:420, Social:180, Traveling:60, Work:270}}
+,{State:'Weir',freq:{Class:195, Eating:70, Exercise:75, Homework:195, Music:180, Personal:240, Print:120, Screen:480, Sleeping:540, Social:260, Traveling:40, Work:0}}
+,{State:'Zacha-Herthel',freq:{Class:275, Eating:45, Exercise:190, Homework:200, Music:300, Personal:90, Print:0, Screen:345, Sleeping:480, Social:495, Traveling:80, Work:30}}
+];
+
+dashboard('#dashboard',freqData);
+</script>
+    
+    
+
+    
+    
+    
+    
+    
+    
